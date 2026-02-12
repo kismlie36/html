@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description" content="SentineIx#3108 - 全球最強 Discord 防炸群哨兵機器人。智能防刷屏、自動秒封惡意機器人、跨伺服器黑名單、驗證系統、緊急 Lockdown。">
+    <title>SentineIx#3108 | Sentinel Defense System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;900&family=JetBrains+Mono:wght@400;700&family=Noto+Sans+TC:wght@400;700;900&family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    
+    <!-- GSAP & Lenis -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+    <script src="https://unpkg.com/@studio-freight/lenis@1.0.42/dist/lenis.min.js"></script>
+    <script src="https://unpkg.com/split-type"></script>
+    
+    <!-- Three.js (簡化版) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <style>
+        :root {
+            --bg-black: #00040a;
+            --text-white: #e0f7fa;
+            --accent-main: #00ff9d; /* 哨兵綠雷射 */
+            --accent-secondary: #008f5e;
+            --accent-cyan: #00e5ff;
+            --accent-alert: #ff1744;
+            --blob-color: rgba(0, 255, 157, 0.18);
+        }
+
+        body {
+            font-family: 'Inter', 'Noto Sans TC', sans-serif;
+            background-color: var(--bg-black);
+            color: var(--text-white);
+            overflow-x: hidden;
+            margin: 0;
+            width: 100vw;
+            cursor: default;
+        }
+
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        
+        .noise-overlay {
+            position: fixed; inset: 0;
+            background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyBAMAAADsEZWCAAAAGFBMVEUAAAA5OTkAAABERERmZmYzMzMyMjJEREQN0eLFAAAACHRSTlMAwADw/cgF/45P4jwAAABcSURBVDjLY2AYBaNg2AJGJiBpC2QYgJQVSA4A0hYgOQJIGYFkP5A8ACRvA8m7QHIYkDwCJE8AyRNA8hKQPAskbwHJs0DyHJA8DySvAMkrQPIqkLwKJK8CyatA8igAANC3O1/q/K6AAAAAAElFTkSuQmCC");
+            opacity: 0.06; pointer-events: none; z-index: 9990;
+        }
+        
+        .vignette {
+            position: fixed; inset: 0;
+            background: radial-gradient(circle at center, transparent 30%, rgba(0,0,0,0.98) 100%);
+            pointer-events: none; z-index: 9989;
+        }
+
+        .scanline {
+            position: fixed; inset: 0;
+            background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 255, 157, 0.07) 3px);
+            z-index: 9991; pointer-events: none; opacity: 0.35;
+        }
+
+        #webgl-canvas {
+            position: fixed; inset: 0;
+            z-index: -1; pointer-events: none;
+        }
+
+        #mouse-blob {
+            position: fixed; top: 0; left: 0; width: 1000px; height: 1000px;
+            background: radial-gradient(circle, var(--blob-color) 0%, rgba(0,0,0,0) 65%);
+            border-radius: 50%; pointer-events: none; z-index: -1; opacity: 0.75;
+            transform: translate3d(-50%, -50%, 0); will-change: transform; mix-blend-mode: screen;
+        }
+
+        .hud-layer { position: fixed; inset: 0; z-index: 9900; pointer-events: none; padding: 1rem; }
+        .hud-coords { position: absolute; bottom: 1rem; right: 1rem; font-family: 'JetBrains Mono'; font-size: 0.75rem; color: var(--accent-main); opacity: 0.9; text-align: right; line-height: 1.4; }
+        .chapter-indicator { position: absolute; top: 1rem; left: 1rem; font-family: 'JetBrains Mono'; font-size: 0.9rem; color: var(--text-white); opacity: 0.7; letter-spacing: 0.15em; }
+
+        .bento-card {
+            background: rgba(0, 20, 10, 0.7);
+            border: 1px solid rgba(0, 255, 157, 0.25);
+            position: relative; overflow: hidden;
+            backdrop-filter: blur(12px);
+            transition: all 0.4s ease;
+        }
+        .bento-card:hover { 
+            border-color: var(--accent-main); 
+            box-shadow: 0 0 30px rgba(0, 255, 157, 0.2);
+            transform: translateY(-6px);
+        }
+
+        .text-hero { 
+            font-size: clamp(3.5rem, 12vw, 8rem); line-height: 1; font-weight: 900; 
+            letter-spacing: -0.06em; text-transform: uppercase;
+        }
+        
+        .check-list li {
+            position: relative;
+            padding-left: 2rem;
+            margin-bottom: 1.2rem;
+            font-size: 1.1rem;
+        }
+        .check-list li::before {
+            content: "▸";
+            color: var(--accent-main);
+            position: absolute;
+            left: 0;
+            font-weight: bold;
+        }
+
+        .cmd-highlight {
+            background: rgba(0, 255, 157, 0.2);
+            color: var(--accent-main);
+            padding: 0.2rem 0.5rem;
+            border-radius: 0.4rem;
+            font-family: 'JetBrains Mono';
+        }
+
+        @media (max-width: 768px) {
+            .text-hero { font-size: clamp(2.8rem, 10vw, 5rem); }
+            .hud-coords { font-size: 0.65rem; }
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <!-- Start Screen -->
+    <div id="start-screen" class="fixed inset-0 bg-black z-[100000] flex flex-col items-center justify-center cursor-pointer">
+        <div class="text-6xl md:text-9xl font-black tracking-tighter text-white mb-6">SENTINEIX</div>
+        <div class="text-2xl md:text-4xl font-mono text-green-400 mb-12 tracking-[0.5em] animate-pulse">#3108</div>
+        <div class="px-12 py-5 border-2 border-green-500 text-green-400 font-mono text-xl md:text-2xl uppercase tracking-widest hover:bg-green-500 hover:text-black transition-all shadow-[0_0_30px_rgba(0,255,157,0.5)]">
+            ACTIVATE SENTINEL
+        </div>
+        <div class="mt-8 text-base md:text-lg text-gray-500 font-mono">Click to initialize defense protocol</div>
+    </div>
+
+    <div class="noise-overlay"></div>
+    <div class="vignette"></div>
+    <div class="scanline"></div>
+    
+    <div id="mouse-blob"></div>
+    <div id="webgl-canvas"></div>
+    
+    <div class="hud-layer">
+        <div class="chapter-indicator" id="chapter-display">SYS.01 SENTINEL ACTIVE</div>
+        <div class="hud-coords">
+            SYSTEM: <span id="warp-status" class="text-green-400">ONLINE</span><br>
+            THREAT: <span class="text-green-400">LOW</span><br>
+            PROTECTION: <span id="speed-indicator">MAXIMUM</span>
+        </div>
+    </div>
+
+    <div id="viewport">
+
+    <!-- Header -->
+    <header class="fixed top-0 left-0 right-0 z-50 px-6 py-6 md:px-12 opacity-0 bg-black/40 backdrop-blur-md" id="navbar">
+        <div class="flex justify-between items-center max-w-[1800px] mx-auto">
+            <a href="#" class="text-2xl md:text-3xl font-bold tracking-tighter hover:text-green-400 transition-colors flex items-center gap-3">
+                <span class="text-3xl">🛡️</span> SentineIx#3108
+            </a>
+            <nav class="hidden md:flex gap-10 text-base font-medium">
+                <a href="#core" class="hover:text-green-400 transition-colors">核心機制</a>
+                <a href="#features" class="hover:text-green-400 transition-colors">系統特色</a>
+                <a href="#commands" class="hover:text-green-400 transition-colors">指令列表</a>
+                <a href="#privacy" class="hover:text-green-400 transition-colors">隱私安全</a>
+                <a href="#support" class="hover:text-green-400 transition-colors">支援群組</a>
+            </nav>
+            <a href="https://discord.com/oauth2/authorize?client_id=1471118104653463703&permissions=8&integration_type=0&scope=bot" target="_blank" class="font-medium text-sm border border-green-500 text-green-400 px-5 py-2.5 hover:bg-green-500 hover:text-black transition-all shadow-[0_0_15px_rgba(0,255,157,0.3)] rounded">
+                邀請機器人
+            </a>
+        </div>
+    </header>
+
+    <main>
+        
+        <!-- Hero -->
+        <section class="relative min-h-screen flex flex-col justify-center border-b border-green-900/30 overflow-hidden" id="hero" data-chapter="SYS.01 SENTINEL">
+            <div class="absolute inset-0 z-0 opacity-20">
+                <img src="https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=2070&auto=format&fit=crop" alt="Cyber Sentinel Grid" class="w-full h-full object-cover parallax-bg">
+            </div>
+
+            <div class="relative z-10 px-6 md:px-12 max-w-[1800px] mx-auto w-full pt-24 pointer-events-none">
+                <h1 class="text-hero mb-8 text-white split-text mix-blend-difference">
+                    SENTINEIX<br>
+                    <span class="text-green-400">#3108</span>
+                </h1>
+                <p class="text-xl md:text-3xl max-w-4xl text-gray-200 mb-12 opacity-0 hero-sub mix-blend-difference leading-relaxed font-mono">
+                    全球最強 Discord 防炸群哨兵<br>
+                    智能防刷屏 · 秒封惡意機器人 · 跨服黑名單 · 驗證鎖定 · 緊急防禦
+                </p>
+                <div class="flex flex-col md:flex-row gap-6 opacity-0 hero-sub pointer-events-auto">
+                    <a href="https://discord.com/oauth2/authorize?client_id=1471118104653463703&permissions=8&integration_type=0&scope=bot" target="_blank" class="px-10 py-5 bg-green-600 text-black font-bold uppercase tracking-widest hover:bg-white transition-all shadow-[0_0_40px_rgba(0,255,157,0.6)] rounded text-center">
+                        立即邀請到你的伺服器
+                    </a>
+                    <a href="https://discord.gg/WcZmGbBKn7" target="_blank" class="px-10 py-5 border-2 border-green-500 text-green-400 font-bold uppercase tracking-widest hover:bg-green-500 hover:text-black transition-all text-center">
+                        加入支援群組
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <!-- Core -->
+        <section id="core" class="min-h-screen flex items-center px-6 md:px-12 border-y border-green-900/30 bg-black/70 py-20 backdrop-blur-sm" data-chapter="SYS.02 CORE">
+            <div class="max-w-[1800px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20">
+                <div class="flex flex-col justify-center">
+                    <div class="text-sm font-mono text-green-400 mb-4">CORE SENTINEL PROTOCOLS</div>
+                    <h2 class="text-5xl md:text-7xl font-black tracking-tighter mb-8 split-text text-white">
+                        核心<br>防禦<br><span class="text-green-400">機制</span>
+                    </h2>
+                    <p class="text-gray-300 text-lg mb-10">
+                        SentineIx 如哨兵般 24/7 監控你的 Discord 伺服器，精準攔截炸群攻擊，零誤傷正常對話。
+                    </p>
+                </div>
+                <div class="space-y-8">
+                    <div class="bento-card p-8 border-l-4 border-l-green-500" data-tilt>
+                        <h3 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+                            <span class="text-green-400 text-3xl">⚡</span> 智能刷屏防護
+                        </h3>
+                        <p class="text-gray-300">
+                            短時間刷屏 · 連續重複內容 · 每分鐘訊息上限<br>
+                            自動刪除 + 警告 + 達標踢出
+                        </p>
+                    </div>
+
+                    <div class="bento-card p-8 border-l-4 border-l-green-500" data-tilt>
+                        <h3 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+                            <span class="text-green-400 text-3xl">🤖</span> 惡意機器人秒封
+                        </h3>
+                        <p class="text-gray-300">
+                            新帳號 · 危險名稱 · 發送 @everyone 的機器人 → 即時封禁
+                        </p>
+                    </div>
+
+                    <div class="bento-card p-8 border-l-4 border-l-green-500" data-tilt>
+                        <h3 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+                            <span class="text-green-400 text-3xl">🔐</span> 驗證 + 黑白名單
+                        </h3>
+                        <p class="text-gray-300">
+                            新成員按鈕驗證 · 全域黑名單共享 · 白名單豁免
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Features -->
+        <section id="features" class="min-h-screen flex flex-col justify-center px-6 md:px-12 border-y border-green-900/30 bg-black/80 py-20 backdrop-blur-md" data-chapter="SYS.03 FEATURES">
+            <div class="max-w-[1400px] mx-auto w-full">
+                <div class="mb-16 text-center">
+                    <div class="text-sm font-mono text-cyan-400 mb-4">ADVANCED SENTINEL FEATURES</div>
+                    <h2 class="text-5xl md:text-7xl font-black mb-6 split-text text-white">系統特色</h2>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    <div class="bento-card p-8" data-tilt>
+                        <div class="text-5xl mb-6">⚡</div>
+                        <h3 class="text-2xl font-bold text-white mb-4">極速反應</h3>
+                        <p class="text-gray-300">0.5 秒內刪除惡意訊息，1 秒內完成封禁。</p>
+                    </div>
+
+                    <div class="bento-card p-8" data-tilt>
+                        <div class="text-5xl mb-6">🌐</div>
+                        <h3 class="text-2xl font-bold text-white mb-4">跨服聯防</h3>
+                        <p class="text-gray-300">黑名單共享，所有使用 SentineIx 的伺服器自動受益。</p>
+                    </div>
+
+                    <div class="bento-card p-8" data-tilt>
+                        <div class="text-5xl mb-6">🛡️</div>
+                        <h3 class="text-2xl font-bold text-white mb-4">緊急 Lockdown</h3>
+                        <p class="text-gray-300">/lockdown 一鍵關閉全伺服器發言，應對大規模攻擊。</p>
+                    </div>
+
+                    <div class="bento-card p-8" data-tilt>
+                        <div class="text-5xl mb-6">🔍</div>
+                        <h3 class="text-2xl font-bold text-white mb-4">可疑掃描</h3>
+                        <p class="text-gray-300">自動掃描頻道內機器人，標記並建議處置。</p>
+                    </div>
+
+                    <div class="bento-card p-8" data-tilt>
+                        <div class="text-5xl mb-6">📋</div>
+                        <h3 class="text-2xl font-bold text-white mb-4">完整指令面板</h3>
+                        <p class="text-gray-300">/config、/status、/scan_bots 等斜線指令，管理零死角。</p>
+                    </div>
+
+                    <div class="bento-card p-8" data-tilt>
+                        <div class="text-5xl mb-6">🔐</div>
+                        <h3 class="text-2xl font-bold text-white mb-4">極致隱私</h3>
+                        <p class="text-gray-300">不儲存聊天內容，只記錄必要 ID 與原因。</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Commands -->
+        <section id="commands" class="min-h-screen flex items-center px-6 md:px-12 border-y border-green-900/30 bg-black/90 py-20" data-chapter="SYS.04 COMMANDS">
+            <div class="max-w-[1400px] mx-auto w-full">
+                <div class="mb-16 text-center">
+                    <h2 class="text-5xl md:text-7xl font-black mb-6 split-text text-white">指令一覽</h2>
+                    <p class="text-gray-400 text-lg">所有斜線指令（/）僅限伺服器管理員使用</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div class="bento-card p-8">
+                        <h3 class="text-2xl font-bold text-green-400 mb-6">核心控制</h3>
+                        <ul class="space-y-4 text-gray-300 font-mono text-sm">
+                            <li><span class="cmd-highlight">/protection</span> → 總開關</li>
+                            <li><span class="cmd-highlight">/lockdown</span> → 緊急鎖定</li>
+                            <li><span class="cmd-highlight">/status</span> → 查看狀態</li>
+                            <li><span class="cmd-highlight">/config</span> → 調整參數</li>
+                        </ul>
+                    </div>
+
+                    <div class="bento-card p-8">
+                        <h3 class="text-2xl font-bold text-green-400 mb-6">進階管理</h3>
+                        <ul class="space-y-4 text-gray-300 font-mono text-sm">
+                            <li><span class="cmd-highlight">/set_log_channel</span> → 設定記錄頻道</li>
+                            <li><span class="cmd-highlight">/set_verify_role</span> → 設定驗證角色</li>
+                            <li><span class="cmd-highlight">/add_keyword</span> → 新增禁詞</li>
+                            <li><span class="cmd-highlight">/scan_bots</span> → 手動掃描機器人</li>
+                            <li><span class="cmd-highlight">/test_protection</span> → 測試刷屏</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Support -->
+        <section id="support" class="min-h-screen flex items-center justify-center px-6 md:px-12 bg-black relative">
+            <div class="text-center relative z-10">
+                <h2 class="text-6xl md:text-8xl font-black mb-8 split-text text-white">
+                    加入<br>SentineIx<br>聯盟
+                </h2>
+                <p class="text-2xl text-gray-300 mb-12 max-w-3xl mx-auto">
+                    即時技術支援 · 功能建議 · 最新更新
+                </p>
+                <div class="flex flex-col md:flex-row gap-6 justify-center">
+                    <a href="https://discord.com/oauth2/authorize?client_id=1471118104653463703&permissions=8&integration_type=0&scope=bot" target="_blank" class="px-12 py-6 bg-green-600 text-black text-2xl font-bold uppercase tracking-widest hover:bg-white hover:text-black transition-all shadow-[0_0_50px_rgba(0,255,157,0.6)] rounded">
+                        立即邀請機器人
+                    </a>
+                    <a href="https://discord.gg/dyKFcajFjb" target="_blank" class="px-12 py-6 border-2 border-green-500 text-green-400 text-2xl font-bold uppercase tracking-widest hover:bg-green-500 hover:text-black transition-all">
+                        加入支援群組
+                    </a>
+                </div>
+                <p class="mt-20 text-gray-500 text-lg font-mono">
+                    © 2025 SentineIx#3108 • All Rights Reserved
+                </p>
+            </div>
+        </section>
+
+    </main>
+
+    </div>
+
+    <script>
+        // Start Screen
+        document.addEventListener('DOMContentLoaded', () => {
+            const startScreen = document.getElementById('start-screen');
+            startScreen.addEventListener('click', () => {
+                gsap.to(startScreen, { opacity: 0, duration: 1.2, onComplete: () => startScreen.style.display = 'none' });
+                gsap.to('#navbar', { opacity: 1, duration: 1.5, delay: 0.3 });
+            });
+        });
+
+        // Lenis
+        const lenis = new Lenis({ duration: 1.2, easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)), smooth: true });
+        function raf(time) { lenis.raf(time); requestAnimationFrame(raf); }
+        requestAnimationFrame(raf);
+
+        // GSAP
+        gsap.registerPlugin(ScrollTrigger);
+
+        gsap.utils.toArray('.anim-fade').forEach(el => {
+            gsap.from(el, { scrollTrigger: { trigger: el, start: 'top 85%' }, y: 50, opacity: 0, duration: 1.2, ease: 'power3.out' });
+        });
+
+        gsap.utils.toArray('.split-text').forEach(text => {
+            const split = new SplitType(text, { types: 'chars' });
+            gsap.from(split.chars, { scrollTrigger: { trigger: text, start: 'top 80%' }, y: 100, opacity: 0, stagger: 0.04, duration: 1.5, ease: 'power4.out' });
+        });
+
+        // Mouse Blob
+        const blob = document.getElementById('mouse-blob');
+        let mouseX = 0, mouseY = 0;
+        document.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
+        function animateBlob() {
+            blob.style.left = mouseX + 'px';
+            blob.style.top = mouseY + 'px';
+            requestAnimationFrame(animateBlob);
+        }
+        animateBlob();
+
+        // Three.js 簡化星空
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x00040a);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 5000);
+        camera.position.z = 800;
+        const renderer = new THREE.WebGLRenderer({ alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('webgl-canvas').appendChild(renderer.domElement);
+
+        const starsGeometry = new THREE.BufferGeometry();
+        const starsCount = 10000;
+        const posArray = new Float32Array(starsCount * 3);
+        for(let i = 0; i < starsCount * 3; i++) posArray[i] = (Math.random() - 0.5) * 4000;
+        starsGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+
+        const starsMaterial = new THREE.PointsMaterial({ size: 1.5, color: 0x00ff9d, transparent: true, opacity: 0.9 });
+        const stars = new THREE.Points(starsGeometry, starsMaterial);
+        scene.add(stars);
+
+        function animateStars() {
+            stars.rotation.y += 0.0003;
+            renderer.render(scene, camera);
+            requestAnimationFrame(animateStars);
+        }
+        animateStars();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
